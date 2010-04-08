@@ -1,0 +1,75 @@
+<div>
+  <style type="text/golf">
+    form {
+      width: 15em;
+      text-align: right;
+      margin: 0 auto;
+    }
+      form h3 {
+        text-align: center;
+      }
+    .error, .loading {
+      text-align: left;
+      font-family: monospace;
+      margin-bottom: .5em;
+    }
+    .error p, .loading p {
+      line-height: 100%;
+      padding: .5em;
+      margin: 0;
+    }
+    .error {
+      color: red;
+      background: #fee;
+      border: 1px solid red;
+    }
+    .loading {
+      color: gold;
+      background: #ffe;
+      border: 1px solid gold;
+    }
+  </style>
+
+<script type="text/golf">#!coffee -np
+
+( ->
+  handlers: []
+
+  @addHandler: ((hlr) ->
+    handlers.push(hlr)
+  )
+
+  @denied: ((msg) ->
+    $(".loading").hide()
+    $(".error p").text(msg).parent().show()
+    $("input[type='password']").select()
+    $("input").removeAttr("disabled")
+  )
+
+  $(".error, .loading").hide()
+  $("input[name='username']").focus()
+
+  $(".login form").submit( ->
+    $(".error").hide()
+    $(".loading").show()
+    $("input").attr("disabled", "disabled")
+    user: $("input[name='username']").val()
+    pass: $("input[name='password']").val()
+    $.each(handlers, (i,v) -> v(user, pass))
+    return false
+  )
+)
+
+</script>
+
+  <div class="login">
+    <form>
+      <h3>UberMail</h3>
+      <div class="error"><p>Authentication failed.</p></div>
+      <div class="loading"><p>Authenticating...</p></div>
+      Username: <input type="text" name="username"/><br />
+      Password: <input type="password" name="password"/><br />
+      <input type="submit" value="login"/>
+    </form>
+  </div>
+</div>

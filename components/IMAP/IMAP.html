@@ -1,0 +1,35 @@
+<div>
+  <style type="text/golf">
+  </style>
+
+  <script type="text/golf">
+
+    function() {
+
+      var Imap = $.require("imap").Imap;
+      var imap = new Imap("/http2imap-0.1-dev/");
+
+      window.imap = imap;
+
+      var success = function(resp) {
+        imap.list();
+        $(".content").empty().append(new Component.Mailbox(imap));
+      };
+
+      var failure = function(resp) {
+        login.denied(resp.code_args);
+      };
+
+      var login = new Component.Login();
+      login.addHandler(function(user, pass) {
+        imap.login(user, pass, success, failure);
+      });
+
+      $(".content").append(login);
+    }
+
+  </script>
+
+  <div class="content">
+  </div>
+</div>

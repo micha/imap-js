@@ -1,0 +1,39 @@
+<div>
+  <style type="text/golf">
+  </style>
+
+<script type="text/golf">#!coffee -np
+
+((imap) ->
+
+  @select: ((box) ->
+    imap.select(box)
+  )
+
+  self: this
+
+  imap.list((boxes) ->
+    $.each(boxes, (i,v) ->
+      link: $("<a href='javascript:void()'>"+v.name+"</a>").click((event) ->
+        self.select(v.name)
+        return false
+      )
+      $(".folders tbody").append($("<tr/>").append($("<td/>").append(link)))
+    )
+  )
+
+)
+
+</script>
+
+  <table class="main">
+    <tr>
+      <td class="left">
+        <table class="folders">
+          <tr><td><a href="javascript:void()">Compose</a></td></tr>
+        </table>
+      </td>
+      <td class="right">
+      </td>
+    </tr>
+  </table>
