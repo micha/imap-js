@@ -2,33 +2,23 @@
   <style type="text/golf">
   </style>
 
-  <script type="text/golf">
+<script type="text/golf">#!coffee -np
 
-    function() {
+((imap) ->
 
-      var Imap = $.require("imap").Imap;
-      var imap = new Imap("/http2imap-0.1-dev/");
+  success: ((resp) ->
+    $.golf.location("/inbox/")
+  )
 
-      window.imap = imap;
+  login: new Component.Login()
+  login.addHandler((user, pass) -> 
+    imap.login(user, pass, success, login.denied)
+  )
 
-      var success = function(resp) {
-        imap.list();
-        $(".content").empty().append(new Component.Mailbox(imap));
-      };
+  $(".content").append(login)
+)
 
-      var failure = function(resp) {
-        login.denied(resp.code_args);
-      };
-
-      var login = new Component.Login();
-      login.addHandler(function(user, pass) {
-        imap.login(user, pass, success, failure);
-      });
-
-      $(".content").append(login);
-    }
-
-  </script>
+</script>
 
   <div class="content">
   </div>
