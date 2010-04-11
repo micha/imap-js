@@ -55,6 +55,7 @@
     user: $("input[name='username']").val()
     pass: $("input[name='password']").val()
     $.each(handlers, (i,v) -> v(user, pass))
+    $("input").removeAttr("disabled")
     return false
   )
 )

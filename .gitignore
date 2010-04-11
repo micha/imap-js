@@ -1,5 +1,8 @@
 build/*
 dist/*
+components.js
+new.html
+new.fc.html
 *.swp
 *.swo
 *~

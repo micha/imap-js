@@ -1,5 +1,9 @@
 <div>
   <style type="text/golf">
+    a.selected {
+      color: orange;
+      text-decoration: none;
+    }
   </style>
 
 <script type="text/golf">#!coffee -np
@@ -7,21 +11,17 @@
 ((imap) ->
 
   @select: ((box) ->
-    imap.select(box)
+    imap.select(box, ( ->
+      $(".folders a[href$='#/folder/"+box+"/']").addClass("selected")
+    ))
   )
 
-  self: this
-
-  imap.list((boxes) ->
-    $.each(boxes, (i,v) ->
-      link: $("<a href='javascript:void()'>"+v.name+"</a>").click((event) ->
-        self.select(v.name)
-        return false
-      )
+  imap.list((boxes) =>
+    $.each(boxes, (i,v) =>
+      link: $("<a href='#/folder/"+v.name+"/'>"+v.name+"</a>")
       $(".folders tbody").append($("<tr/>").append($("<td/>").append(link)))
     )
   )
-
 )
 
 </script>

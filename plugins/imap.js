@@ -1,5 +1,7 @@
 #!coffee -p
 
+LongPoll: $.require("longpoll").LongPoll
+
 token: ((s, pat) ->
   if ( s != undefined && (match: s.text.match(pat)) )
     s.text: s.text.replace(pat, "")
@@ -9,14 +11,65 @@ token: ((s, pat) ->
     return undefined
 )
 
-parse_status_resp: ((resp) ->
-  pat: /^(OK|NO|BAD|PREAUTH|BYE)( \[(ALERT|BADCHARSET|CAPABILITY|PARSE|PERMANENTFLAGS|READ-ONLY|READ-WRITE|TRYCREATE|UIDNEXT|UIDVALIDITY|UNSEEN)\])?( ([^\r\n]+))?\r\n/i
+parse_flags_resp: ((resp) ->
+  pat: /^FLAGS \(([^\)]*)\)\r\n/i
+
   if ( token(resp, pat) == undefined ) then return undefined
 
-  resp.status: resp._match[1]
-  resp.code: resp._match[3]
-  resp.args: resp._match[5]
-  $(document).trigger("imap_status", [resp])
+  resp.flags: {}
+
+  for i in resp._match[1].split(" ")
+    resp.flags[i]: true
+
+  $(document).trigger("imap_flags", [resp])
+  return resp
+)
+
+parse_exists_resp: ((resp) ->
+  pat: /^([0-9]+) EXISTS\r\n/
+
+  if ( token(resp, pat) == undefined ) then return undefined
+
+  resp.exists: resp._match[1]
+
+  $(document).trigger("imap_exists", [resp])
+  return resp
+)
+
+parse_recent_resp: ((resp) ->
+  pat: /^([0-9]+) RECENT\r\n/
+
+  if ( token(resp, pat) == undefined ) then return undefined
+
+  resp.recent: resp._match[1]
+
+  $(document).trigger("imap_recent", [resp])
+  return resp
+)
+
+parse_status_resp: ((resp) ->
+  pat: /^(OK|NO|BAD|PREAUTH|BYE)( \[((ALERT|BADCHARSET|CAPABILITY|PARSE|PERMANENTFLAGS|READ-ONLY|READ-WRITE|TRYCREATE|UIDNEXT|UIDVALIDITY|UNSEEN)( ([^\]]+))?)\])?( ([^\r\n]+))?\r\n/i
+
+  if ( token(resp, pat) == undefined ) then return undefined
+
+  resp.status:  resp._match[1]
+  resp.code:    resp._match[4] || ""
+  resp.args:    resp._match[6]
+  resp.comment: resp._match[8]
+
+  args:         resp.args
+
+  if (resp.code.match(/^(BADCHARSET|PERMANENTFLAGS)$/i))
+    resp.args: {}
+    if ( (m: args.match(/^\(([^ ].*)\)$/)) )
+      for i in m[1].split(" ")
+        resp.args[i]: true
+  else if (resp.code == "CAPABILITY")
+    resp.args: {}
+    for i in args.split(" ")
+      resp.args[i]: true
+
+  $(document).trigger("imap_"+resp.type+"_status", [resp])
   return resp
 )
 
@@ -25,28 +78,49 @@ parse_list_resp: ((resp) ->
   if ( token(resp, pat) == undefined ) then return undefined
 
   resp.list: true
-  resp.attr: resp._match[1].split(" ")
+  resp.attr: {}
+  
+  for i in resp._match[1].split(" ")
+    resp.attr[i]: true
+
   resp.separator: resp._match[2]
   resp.name: resp._match[3]
+  
   $(document).trigger("imap_list", [resp])
   return resp
 )
 
-parse_untagged: ((resp) ->
-  if (token(resp, /^\* /) == undefined) then return undefined
-  resp.type: "untagged"
-  return parse_status_resp(resp) || 
-    parse_list_resp(resp)
+parse_unknown_resp: ((resp) ->
+  pat: /^([^\r\n]+)\r\n/
+  if ( token(resp, pat) == undefined ) then return undefined
+
+  resp.unknown: resp._match[1]
+
+  $(document).trigger("imap_unknown", [resp])
+  return resp
 )
 
-parse_continuation: ((resp) ->
+parse_untagged_resp: ((resp) ->
+  if (token(resp, /^\* /) == undefined) then return undefined
+
+  resp.type: "untagged"
+
+  return parse_status_resp(resp) || 
+    parse_list_resp(resp) ||
+    parse_flags_resp(resp) ||
+    parse_exists_resp(resp) ||
+    parse_recent_resp(resp) ||
+    parse_unknown_resp(resp)
+)
+
+parse_continuation_resp: ((resp) ->
   if (token(resp, /^\+ /) == undefined) then return undefined
   resp.type: "continuation"
   console.log(resp)
   return resp
 )
 
-parse_tagged: ((resp) ->
+parse_tagged_resp: ((resp) ->
   if (token(resp, /^([A-Z0-9]+) /) == undefined) then return undefined
   resp.id: resp._match[1]
   resp.type: "tagged"
@@ -54,9 +128,9 @@ parse_tagged: ((resp) ->
 )
 
 parse_one: ((resp) ->
-  return parse_untagged(resp) ||
-    parse_continuation(resp) ||
-    parse_tagged(resp) ||
+  return parse_untagged_resp(resp) ||
+    parse_continuation_resp(resp) ||
+    parse_tagged_resp(resp) ||
     console.log("OH SHIT: '"+resp.text+"'")
 )
 
@@ -65,74 +139,77 @@ parse: ((resp) ->
     resp: parse_one( { text: resp.text } )
 )
 
-Imap: ((url, host, port) ->
+Imap: ((url) ->
   @url:   url
-  @host:  host
-  @port:  port
+
+  # keepalive setInterval handle
+  @ping:  null
+
+  # queue runner setInterval handle
+  @qrun: null
 
   # 0 => not connected
   # 1 => connected
   # 2 => authenticated
   # 3 => selected
   @state: 0
+
+  @boxes:   []
+  @mailbox: null
   
+  @sending: false
   @queue: []
 
-  connect: ( ->
-    $.ajax({
-      url: url,
-      data: { rhost:host, rport:port }
-    })
-  )
-
-  $(document).bind("imap_status", (event, resp) => 
-    if (resp.type == "tagged") then return
-
+  $(document).bind("imap_untagged_status", (event, resp) => 
     if (@state == 0 && resp.status == "OK")
+      @ping: setInterval((ping: ( => @noop())), 5000)
+      @qrun: setInterval((qrun: ( =>
+        if (!@sending && @queue.length > 0)
+          (@queue.shift())()
+      )), 100)
       @setState(1)
-      console.log(resp.args)
+      console.log(resp.comment)
     else if (@state == 0 && resp.status == "PREAUTH")
+      @ping: setInterval((ping: ( => @noop())), 150000)
       @setState(2)
-      console.log(resp.args)
+      console.log(resp.comment)
     else if (@state > 0 && resp.status == "BYE")
+      clearInterval(@ping) if (@ping?)
+      clearInterval(@qrun) if (@qrun?)
       @setState(0)
-      console.log(resp.args)
+      console.log(resp.comment)
   )
 
-  $(document).bind("imap_state", (event, i) ->
-    console.log(">>> "+i.state)
+  $(document).bind("imap_unknown", (event, resp) =>
+    console.log("UNKNOWN RESPONSE: "+resp.unknown)
   )
 
-  $(document).ajaxComplete(
-    (longPoll: ((e, xhr, settings) =>
-      set_url: settings.url.replace(/\?.*$/, "")
-      if (set_url == url && settings.type == "GET")
-        if (xhr.status == 0)
-          return $.get(settings.url)
-        else if (! (200 <= xhr.status < 300))
-          console.log(xhr.responseText)
-          @start: 0
-          return connect()
-        else
-          console.log(xhr.responseText)
-          parse({ text: xhr.responseText })
-        $.get(set_url)
-      )
-    )
+  @longpoll: new LongPoll(url)
+
+  @longpoll.onData: ((responseText) ->
+    console.log(responseText)
+    parse({ text: responseText })
   )
 
-  @setState(0)
-  connect()
+  @longpoll.onError: ((responseText) =>
+    console.log("ERROR: "+responseText)
+    @setState(0)
+  )
 
-  setInterval((ping: ( => @noop())), 150000)
+  return this
+)
+
+Imap.prototype.connect: ((host, port) ->
+  @longpoll.connect(host, port)
 
   return this
 )
 
 Imap.prototype.setState: ((state) ->
   @state: state
-  $(document).trigger("imap_state", [this])
+  if (state < 3) then @mailbox: null
 
+  $(document).trigger("imap_state", [this])
   return this
 )
 
@@ -152,18 +229,22 @@ Imap.prototype.next: ((id, fmt) ->
 )(0, "XXXX0000")
 
 Imap.prototype.send: ((cmd, success, failure, handlers) ->
-  id: @next()
+  @queue.push( ( => @_send(cmd, success, failure, handlers)) )
+)
+
+Imap.prototype._send: ((cmd, success, failure, handlers) ->
+  @sending:   true
+  id:         @next()
 
   cmd: id + " " + cmd + "\r\n"
   console.log(cmd)
-  $.post(this.url, { command: cmd })
 
   if (handlers?)
     for hlr of handlers
-      $(document).bind(hlr+"."+id, (event, resp) -> handlers[hlr](resp))
+      $(document).bind(hlr+"."+id, handlers[hlr])
 
-  $(document).bind("imap_status."+id, (event, resp) ->
-    if (resp.type != "tagged" || resp.id != id) then return
+  $(document).bind("imap_tagged_status."+id, (event, resp) =>
+    if (resp.id != id) then return
 
     console.log("send: id="+resp.id+", status="+resp.status)
 
@@ -173,8 +254,11 @@ Imap.prototype.send: ((cmd, success, failure, handlers) ->
       failure(resp)
 
     $(document).unbind("."+id)
+    @sending: false
   )
    
+  @longpoll.send(cmd)
+
   return this
 )
 
@@ -186,26 +270,46 @@ Imap.prototype.noop: ((success, failure) ->
 Imap.prototype.login: ((user, pass, success, failure) ->
   @send("LOGIN \""+user+"\" \""+pass+"\"", ((resp) =>
     @setState(2)
-    success(resp)
+    success(resp.comment)
   ), ((resp) ->
-    failure(resp.args)
+    failure(resp.comment)
   ))
   return this
 )
 
 Imap.prototype.select: ((mailbox, success, failure) ->
-  @send("SELECT \""+mailbox+"\"", success, failure)
+  handlers: {
+    "imap_untagged_status": ((event, resp) ->
+      if (resp.code == "PERMANENTFLAGS")
+        console.log()
+    ),
+    "imap_exists": ((event, resp) ->
+      console.log(resp.exists+" messages!")
+    )
+  }
+
+  _success: ((text) =>
+    @mailbox: mailbox
+    @setState(3)
+    success(text) if (success?)
+  )
+
+  @send("SELECT \""+mailbox+"\"", _success, failure, handlers)
   return this
 )
 
 Imap.prototype.list: ((success, failure) ->
-  boxes: []
+  if (@boxes.length > 0)
+    success(@boxes) if (success?)
+    return this
+  
+  @boxes: []
 
   handlers: {
-    "imap_list": ((resp) -> boxes.push(resp))
+    "imap_list": ((event, resp) => @boxes.push(resp))
   }
 
-  _success: ( -> success(boxes))
+  _success: ( => success(@boxes))
 
   @send('LIST "" %', _success, failure, handlers)
   return this
