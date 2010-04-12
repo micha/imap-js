@@ -1,8 +1,48 @@
 <div>
   <style type="text/golf">
+    a {
+      color: #444;
+      text-decoration: none;
+    }
     a.selected {
       color: orange;
-      text-decoration: none;
+    }
+    table.folders,
+    table.actions {
+      width: 100%;
+    }
+    table.folders {
+      padding-top: 0.5em;
+    }
+    table.info {
+      width: 100%;
+      border-bottom: 1px solid #444;
+      margin-bottom: 1.0em;
+    }
+    table.info td.login {
+      font-size: small;
+      width: 100%;
+      text-align: right;
+    }
+    table.info * {
+      padding: 0px;
+      margin: 0px;
+    }
+    span.login {
+      font-weight: bold;
+    }
+    span.uber {
+      color: red;
+    }
+    span.mail {
+      color: orange;
+    }
+    span.unseen {
+      padding-left: 0.5em;
+      font-size: small;
+      font-style: italic;
+      vertical-align: top;
+      color: #aaa;
     }
   </style>
 
@@ -10,27 +50,62 @@
 
 ((imap) ->
 
+  window.mb: $
+
   @select: ((box) ->
     imap.select(box, ( ->
+      $(".folders a").removeClass("selected")
       $(".folders a[href$='#/folder/"+box+"/']").addClass("selected")
     ))
   )
 
-  imap.list((boxes) =>
-    $.each(boxes, (i,v) =>
-      link: $("<a href='#/folder/"+v.name+"/'>"+v.name+"</a>")
-      $(".folders tbody").append($("<tr/>").append($("<td/>").append(link)))
+  @setUnseen: ((box) ->
+    $(".folders div.folder").each((i,v) ->
+      if ($("a", v).text() == box.name && box.UNSEEN > 0)
+        $("span", v).text("["+box.UNSEEN+"]")
     )
   )
+
+  $(document).bind("imap_mbox_changed", (event, box) =>
+    @setUnseen(box) if box.UNSEEN > 0
+  )
+
+  imap.list((boxes) =>
+    $.each(boxes, (i,v) =>
+      link: $("<div class='folder'/>").append(
+        $("<a href='#/folder/"+v.name+"/'>"+v.name+"</a>")
+      ).append(
+        $("<span class='unseen'/>")
+      )
+      $(".folders").append(
+        $("<tr/>").append($("<td/>").append(link))
+      )
+      @setUnseen(v) if v.UNSEEN > 0
+    )
+  )
+
+  $("span.login").text(imap.login+"@"+imap.longpoll.host)
 )
 
 </script>
 
-  <table class="main">
+  <table class="info" cellpadding="0" cellspacing="0">
+    <tr>
+      <td class="logo">
+        <h3><span class="uber">JS</span><span class="mail">imap</span></h3>
+      </td>
+      <td class="login">
+        <p><span class="login">nobody</span></p>
+      </td>
+    </tr>
+  </table>
+  <table class="main" cellpadding="0" cellspacing="0">
     <tr>
       <td class="left">
-        <table class="folders">
+        <table class="actions" cellpadding="0" cellspacing="0">
           <tr><td><a href="javascript:void()">Compose</a></td></tr>
+        </table>
+        <table class="folders" cellpadding="0" cellspacing="0">
         </table>
       </td>
       <td class="right">

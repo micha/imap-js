@@ -2,6 +2,7 @@
 
 LongPoll: ((url) ->
   @url:            url
+  @host:           null
   @onData:         null
   @onError:        null
 
@@ -24,6 +25,7 @@ LongPoll: ((url) ->
 )
 
 LongPoll.prototype.connect: ((host, port) ->
+  @host: host
   $.ajax({
     url: @url,
     data: { rhost:host, rport:port }

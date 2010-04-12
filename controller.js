@@ -1,4 +1,5 @@
 $.golf.defaultRoute = "/login/";
+$.golf.jssTimeout = 10;
 
 $(document).bind("imap_state", function(event, imap) {
   if (imap.state == 0) {
@@ -8,7 +9,7 @@ $(document).bind("imap_state", function(event, imap) {
     $.golf.location("/login/");
   }
   else if (imap.state == 2) {
-    $.golf.location("/folder/INBOX/");
+    $.golf.location("/folder/"+requested_box+"/");
   }
 });
 
@@ -17,12 +18,13 @@ var imap = new Imap("/mailproxy/");
 window.imap = imap; // debugging
 
 var mbox;
+var requested_box = "INBOX";
 
 $.golf.controller = [
 
   { route: "^/connect/$",
     action: function(container, params) {
-      container.empty().append("<h3>connecting...</h3>");
+      container.empty().append("<h3 style='color:red'>connecting...</h3>");
       imap.connect("ubergibson.com", 143);
     }
   },
@@ -32,7 +34,9 @@ $.golf.controller = [
       if (!imap || imap.state == 0)
         return $.golf.location("/connect/");
       else if (imap.state == 2)
-        return $.golf.location("/inbox/");
+        return $.golf.location("/folder/INBOX/");
+      else if (imap.state == 3)
+        return $.golf.location("/folder/"+imap.mailbox+"/");
       container.empty().append(new Component.IMAP(imap));
     }
   },
@@ -42,8 +46,10 @@ $.golf.controller = [
       if (!params[1])
         return $.golf.location("/folder/INBOX/");
 
-      if (!imap || imap.state < 2)
+      if (!imap || imap.state < 2) {
+        requested_box = params[1];
         return $.golf.location("/login/");
+      }
 
       mbox = new Component.Mailbox(imap);
 

@@ -90,6 +90,22 @@ parse_list_resp: ((resp) ->
   return resp
 )
 
+parse_mbox_status_resp: ((resp) ->
+  pat: /^STATUS "([^"]+)" \(([^\)]*)\)\r\n/
+  if ( token(resp, pat) == undefined ) then return undefined
+
+  resp.mailbox: resp._match[1]
+  resp.data:    {}
+
+  data: resp._match[2].split(" ")
+  i: 0
+  while (i++ < data.length)
+    resp.data[data[i-1]]: data[i++]
+
+  $(document).trigger("imap_mbox_status", [resp])
+  return resp
+)
+
 parse_unknown_resp: ((resp) ->
   pat: /^([^\r\n]+)\r\n/
   if ( token(resp, pat) == undefined ) then return undefined
@@ -110,6 +126,7 @@ parse_untagged_resp: ((resp) ->
     parse_flags_resp(resp) ||
     parse_exists_resp(resp) ||
     parse_recent_resp(resp) ||
+    parse_mbox_status_resp(resp) ||
     parse_unknown_resp(resp)
 )
 
@@ -148,21 +165,37 @@ Imap: ((url) ->
   # queue runner setInterval handle
   @qrun: null
 
+  # unseen messages updater setInterval handle
+  @unseen: null
+
   # 0 => not connected
   # 1 => connected
   # 2 => authenticated
   # 3 => selected
   @state: 0
 
+  @user:    null
   @boxes:   []
   @mailbox: null
   
+  @curStat: 0
   @sending: false
-  @queue: []
+  @queue:   []
+
+  $(document).bind("imap_state", (event, imap) =>
+    if (imap.state == 2)
+      if (!@unseen)
+        @unseen: setInterval((unseen: ( => 
+          @list((boxes) =>
+            for box in boxes
+              @status(box.name)
+          )
+        )), 30000)
+  )
 
   $(document).bind("imap_untagged_status", (event, resp) => 
     if (@state == 0 && resp.status == "OK")
-      @ping: setInterval((ping: ( => @noop())), 5000)
+      @ping: setInterval((ping: ( => @noop())), 150000)
       @qrun: setInterval((qrun: ( =>
         if (!@sending && @queue.length > 0)
           (@queue.shift())()
@@ -176,6 +209,8 @@ Imap: ((url) ->
     else if (@state > 0 && resp.status == "BYE")
       clearInterval(@ping) if (@ping?)
       clearInterval(@qrun) if (@qrun?)
+      clearInterval(@unseen) if (@unseen?)
+      @login: null
       @setState(0)
       console.log(resp.comment)
   )
@@ -269,6 +304,7 @@ Imap.prototype.noop: ((success, failure) ->
 
 Imap.prototype.login: ((user, pass, success, failure) ->
   @send("LOGIN \""+user+"\" \""+pass+"\"", ((resp) =>
+    @login: user
     @setState(2)
     success(resp.comment)
   ), ((resp) ->
@@ -298,18 +334,66 @@ Imap.prototype.select: ((mailbox, success, failure) ->
   return this
 )
 
+Imap.prototype.examine: ((mailbox, success, failure) ->
+  handlers: {
+    "imap_untagged_status": ((event, resp) ->
+      if (resp.code == "PERMANENTFLAGS")
+        console.log()
+    ),
+    "imap_exists": ((event, resp) ->
+      console.log(resp.exists+" messages!")
+    ),
+    "imap_recent": ((event, resp) ->
+      console.log(resp.recent+" recent!")
+    )
+  }
+
+  _success: ((text) =>
+    success(text) if (success?)
+  )
+
+  @send("EXAMINE \""+mailbox+"\"", _success, failure, handlers)
+  return this
+)
+
+Imap.prototype.status: ((mailbox, success, failure) ->
+  handlers: {
+    "imap_mbox_status": ((event, resp) => 
+      for box in @boxes
+        if (box.name == resp.mailbox)
+          flag: false
+          for i in ["MESSAGES","RECENT","UIDNEXT","UIDVALIDITY","UNSEEN"]
+            if (resp.data[i] != box[i])
+              box[i]: resp.data[i]
+              flag: true
+          $(document).trigger("imap_mbox_changed", [box]) if flag
+      success(resp) if (success?)
+    )
+  }
+
+  @send("STATUS \""+mailbox+"\" (MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN)", null, failure, handlers)
+  return this
+)
+
 Imap.prototype.list: ((success, failure) ->
-  if (@boxes.length > 0)
+  Imap.prototype.list: ((success) ->
     success(@boxes) if (success?)
     return this
+  )
   
   @boxes: []
 
   handlers: {
-    "imap_list": ((event, resp) => @boxes.push(resp))
+    "imap_list": ((event, resp) => 
+      @boxes.push(resp)
+    )
   }
 
-  _success: ( => success(@boxes))
+  _success: ( => 
+    for box in @boxes
+      @status(box.name)
+    success(@boxes)
+  )
 
   @send('LIST "" %', _success, failure, handlers)
   return this

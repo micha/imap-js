@@ -28,6 +28,12 @@
       background: #ffe;
       border: 1px solid gold;
     }
+    span.uber {
+      color: red;
+    }
+    span.mail {
+      color: orange;
+    }
   </style>
 
 <script type="text/golf">#!coffee -np
@@ -64,7 +70,7 @@
 
   <div class="login">
     <form>
-      <h3>UberMail</h3>
+      <h3><span class="uber">JS</span><span class="mail">imap</span></h3>
       <div class="error"><p>Authentication failed.</p></div>
       <div class="loading"><p>Authenticating...</p></div>
       Username: <input type="text" name="username"/><br />
