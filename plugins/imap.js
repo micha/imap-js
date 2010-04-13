@@ -2,6 +2,7 @@
 
 config:   $.require("config")
 LongPoll: $.require("longpoll").LongPoll
+Thread:   $.require("thread").Thread
 
 token: ((s, pat) ->
   if ( s != undefined && (match: s.text.match(pat)) )
@@ -158,8 +159,8 @@ parse: ((resp) ->
 )
 
 _send: ((cmd, success, failure, handlers) ->
-  @sending:   true
-  id:         @next()
+  @threads.running: true
+  id: @next()
 
   cmd: id + " " + cmd + "\r\n"
   console.log(cmd)
@@ -179,7 +180,7 @@ _send: ((cmd, success, failure, handlers) ->
       failure(resp)
 
     $(document).unbind("."+id)
-    @sending: false
+    @threads.running: false
   )
    
   @longpoll.send(cmd)
@@ -193,11 +194,11 @@ Imap: ((url) ->
   # keepalive setInterval handle
   @ping:  null
 
-  # queue runner setInterval handle
-  @qrun: null
-
   # unseen messages updater setInterval handle
   @unseen: null
+
+  # "Background" process queues.
+  @threads: new Thread()
 
   # 0 => not connected
   # 1 => connected
@@ -209,9 +210,6 @@ Imap: ((url) ->
   @boxes:   []
   @mailbox: null
   
-  @sending: false
-  @queue:   { priority: [], preemptible: [] }
-
   $(document).bind("imap_state", (event, imap) =>
     interval: config.status_poll_interval
 
@@ -222,7 +220,7 @@ Imap: ((url) ->
         @list((boxes) =>
           for box in boxes
             @status(true, box.name)
-          @queue.preemptible.push(( -> setTimeout(unseen, interval) ))
+          @threads.add(true, ( -> setTimeout(unseen, interval) ))
         )
       )), interval)
   )
@@ -231,12 +229,7 @@ Imap: ((url) ->
     if (@state == 0 && resp.status == "OK")
       if (0 < config.keepalive_interval < config.status_poll_interval)
         @ping: setInterval((ping: ( => @noop(true))), config.keepalive_interval)
-      @qrun: setInterval((qrun: ( =>
-        if (!@sending && @queue.priority.length > 0)
-          (@queue.priority.shift())()
-        else if (!@sending && @queue.preemptible.length > 0)
-          (@queue.preemptible.shift())()
-      )), 100)
+      @threads.start()
       @setState(1)
       console.log(resp.comment)
     else if (@state == 0 && resp.status == "PREAUTH")
@@ -245,7 +238,7 @@ Imap: ((url) ->
       console.log(resp.comment)
     else if (@state > 0 && resp.status == "BYE")
       clearInterval(@ping) if (@ping?)
-      clearInterval(@qrun) if (@qrun?)
+      @threads.stop()
       clearInterval(@unseen) if (@unseen?)
       @login: null
       @setState(0)
@@ -303,9 +296,7 @@ Imap.prototype.send: ( ->
   preempt: arguments.shift()
   args: arguments
 
-  @queue[(if preempt then "preemptible" else "priority")].push(( =>
-    _send.apply(this, args)
-  ))
+  @threads.add(preempt, ( => _send.apply(this, args) ))
   return this
 )
 
