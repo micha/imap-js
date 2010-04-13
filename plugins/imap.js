@@ -1,5 +1,6 @@
 #!coffee -p
 
+config:   $.require("config")
 LongPoll: $.require("longpoll").LongPoll
 
 token: ((s, pat) ->
@@ -212,20 +213,24 @@ Imap: ((url) ->
   @queue:   { priority: [], preemptible: [] }
 
   $(document).bind("imap_state", (event, imap) =>
-    if (@state == 2)
+    interval: config.status_poll_interval
+
+    if (@state == 2 && interval > 0)
       setTimeout((unseen: ( => 
         return if @state < 2
+
         @list((boxes) =>
           for box in boxes
             @status(true, box.name)
-          @queue.preemptible.push(( -> setTimeout(unseen, 3000) ))
+          @queue.preemptible.push(( -> setTimeout(unseen, interval) ))
         )
-      )), 3000)
+      )), interval)
   )
 
   $(document).bind("imap_untagged_status", (event, resp) => 
     if (@state == 0 && resp.status == "OK")
-      @ping: setInterval((ping: ( => @noop(true))), 150000)
+      if (0 < config.keepalive_interval < config.status_poll_interval)
+        @ping: setInterval((ping: ( => @noop(true))), config.keepalive_interval)
       @qrun: setInterval((qrun: ( =>
         if (!@sending && @queue.priority.length > 0)
           (@queue.priority.shift())()
