@@ -1,10 +1,10 @@
-## What
+### What
 
 Imap-js is a clientside IMAP client. It runs in the browser, communicating
 directly with the IMAP server via a long-polling comet proxy. It's written
 for the [golf](http://github.com/golf/golf) web framework.
 
-## Why
+### Why
 
 I need to have some kind of webmail access to my IMAP server. However, I
 don't like running a web app frontend for it (like RoundCube, SquirrelMail,
@@ -16,14 +16,14 @@ So, this project will hopefully produce a fully clientside webmail solution.
 Then the only worry will be whether the IMAP daemon itself is secure, which
 is something I'd need to take care of anyway, with or without webmail.
 
-## Progress so far...
+### Progress so far...
 
 It can log in, list all folders, and get info (like how many unread messages,
 etc.).
 
 ![Screenshot - progress so far...](http://github.com/micha/imap-js/raw/master/screenshot.png "Screenshot - progress so far...")
 
-## Install
+### Install
 
 1. Get [golf](http://github.com/golf/golf) source and build it:
 
