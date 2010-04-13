@@ -1,5 +1,5 @@
 var config  = $.require("config");
-var Imap    = $.require("imap").Imap;
+var Imap    = $.require("imap/client").Imap;
 
 $.golf.defaultRoute = "/login/";
 $.golf.jssTimeout = 10;
