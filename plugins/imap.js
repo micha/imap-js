@@ -213,7 +213,6 @@ Imap: ((url) ->
 
   $(document).bind("imap_state", (event, imap) =>
     if (@state == 2)
-      alert("state=2")
       setTimeout((unseen: ( => 
         return if @state < 2
         @list((boxes) =>

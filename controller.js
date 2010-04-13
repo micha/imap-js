@@ -1,6 +1,8 @@
 $.golf.defaultRoute = "/login/";
 $.golf.jssTimeout = 10;
 
+var config = $.require("config");
+
 $(document).bind("imap_state", function(event, imap) {
   if (imap.state == 0) {
     $.golf.location("/connect/");
@@ -25,7 +27,7 @@ $.golf.controller = [
   { route: "^/connect/$",
     action: function(container, params) {
       container.empty().append("<h3 style='color:red'>connecting...</h3>");
-      imap.connect("ubergibson.com", 143);
+      imap.connect(config.host, config.port);
     }
   },
 
