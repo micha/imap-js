@@ -156,6 +156,36 @@ parse: ((resp) ->
     resp: parse_one( { text: resp.text } )
 )
 
+_send: ((cmd, success, failure, handlers) ->
+  @sending:   true
+  id:         @next()
+
+  cmd: id + " " + cmd + "\r\n"
+  console.log(cmd)
+
+  if (handlers?)
+    for hlr of handlers
+      $(document).bind(hlr+"."+id, handlers[hlr])
+
+  $(document).bind("imap_tagged_status."+id, (event, resp) =>
+    if (resp.id != id) then return
+
+    console.log("send: id="+resp.id+", status="+resp.status)
+
+    if (resp.status == "OK" && success?)
+      success(resp)
+    else if (failure?)
+      failure(resp)
+
+    $(document).unbind("."+id)
+    @sending: false
+  )
+   
+  @longpoll.send(cmd)
+
+  return this
+)
+
 Imap: ((url) ->
   @url:   url
 
@@ -178,27 +208,30 @@ Imap: ((url) ->
   @boxes:   []
   @mailbox: null
   
-  @curStat: 0
   @sending: false
-  @queue:   []
+  @queue:   { priority: [], preemptible: [] }
 
   $(document).bind("imap_state", (event, imap) =>
-    if (imap.state == 2)
-      if (!@unseen)
-        @unseen: setInterval((unseen: ( => 
-          @list((boxes) =>
-            for box in boxes
-              @status(box.name)
-          )
-        )), 30000)
+    if (@state == 2)
+      alert("state=2")
+      setTimeout((unseen: ( => 
+        return if @state < 2
+        @list((boxes) =>
+          for box in boxes
+            @status(true, box.name)
+          @queue.preemptible.push(( -> setTimeout(unseen, 3000) ))
+        )
+      )), 3000)
   )
 
   $(document).bind("imap_untagged_status", (event, resp) => 
     if (@state == 0 && resp.status == "OK")
-      @ping: setInterval((ping: ( => @noop())), 150000)
+      @ping: setInterval((ping: ( => @noop(true))), 150000)
       @qrun: setInterval((qrun: ( =>
-        if (!@sending && @queue.length > 0)
-          (@queue.shift())()
+        if (!@sending && @queue.priority.length > 0)
+          (@queue.priority.shift())()
+        else if (!@sending && @queue.preemptible.length > 0)
+          (@queue.preemptible.shift())()
       )), 100)
       @setState(1)
       console.log(resp.comment)
@@ -236,7 +269,6 @@ Imap: ((url) ->
 
 Imap.prototype.connect: ((host, port) ->
   @longpoll.connect(host, port)
-
   return this
 )
 
@@ -263,47 +295,29 @@ Imap.prototype.next: ((id, fmt) ->
   )
 )(0, "XXXX0000")
 
-Imap.prototype.send: ((cmd, success, failure, handlers) ->
-  @queue.push( ( => @_send(cmd, success, failure, handlers)) )
-)
+Imap.prototype.send: ( ->
+  preempt: arguments.shift()
+  args: arguments
 
-Imap.prototype._send: ((cmd, success, failure, handlers) ->
-  @sending:   true
-  id:         @next()
-
-  cmd: id + " " + cmd + "\r\n"
-  console.log(cmd)
-
-  if (handlers?)
-    for hlr of handlers
-      $(document).bind(hlr+"."+id, handlers[hlr])
-
-  $(document).bind("imap_tagged_status."+id, (event, resp) =>
-    if (resp.id != id) then return
-
-    console.log("send: id="+resp.id+", status="+resp.status)
-
-    if (resp.status == "OK" && success?)
-      success(resp)
-    else if (failure?)
-      failure(resp)
-
-    $(document).unbind("."+id)
-    @sending: false
-  )
-   
-  @longpoll.send(cmd)
-
+  @queue[(if preempt then "preemptible" else "priority")].push(( =>
+    _send.apply(this, args)
+  ))
   return this
 )
 
-Imap.prototype.noop: ((success, failure) ->
-  @send("NOOP", success, failure)
+Imap.prototype.noop: ( ->
+  arguments.shift() if preempt: (arguments[0] == true)
+  [success, failure]: arguments
+
+  @send(preempt, "NOOP", success, failure)
   return this
 )
 
-Imap.prototype.login: ((user, pass, success, failure) ->
-  @send("LOGIN \""+user+"\" \""+pass+"\"", ((resp) =>
+Imap.prototype.login: ( ->
+  arguments.shift() if preempt: (arguments[0] == true)
+  [user, pass, success, failure]: arguments
+
+  @send(preempt, "LOGIN \""+user+"\" \""+pass+"\"", ((resp) =>
     @login: user
     @setState(2)
     success(resp.comment)
@@ -313,7 +327,10 @@ Imap.prototype.login: ((user, pass, success, failure) ->
   return this
 )
 
-Imap.prototype.select: ((mailbox, success, failure) ->
+Imap.prototype.select: ( ->
+  arguments.shift() if preempt: (arguments[0] == true)
+  [mailbox, success, failure]: arguments
+
   handlers: {
     "imap_untagged_status": ((event, resp) ->
       if (resp.code == "PERMANENTFLAGS")
@@ -330,11 +347,14 @@ Imap.prototype.select: ((mailbox, success, failure) ->
     success(text) if (success?)
   )
 
-  @send("SELECT \""+mailbox+"\"", _success, failure, handlers)
+  @send(preempt, "SELECT \""+mailbox+"\"", _success, failure, handlers)
   return this
 )
 
-Imap.prototype.examine: ((mailbox, success, failure) ->
+Imap.prototype.examine: ( ->
+  arguments.shift() if preempt: (arguments[0] == true)
+  [mailbox, success, failure]: arguments
+
   handlers: {
     "imap_untagged_status": ((event, resp) ->
       if (resp.code == "PERMANENTFLAGS")
@@ -352,11 +372,14 @@ Imap.prototype.examine: ((mailbox, success, failure) ->
     success(text) if (success?)
   )
 
-  @send("EXAMINE \""+mailbox+"\"", _success, failure, handlers)
+  @send(preempt, "EXAMINE \""+mailbox+"\"", _success, failure, handlers)
   return this
 )
 
-Imap.prototype.status: ((mailbox, success, failure) ->
+Imap.prototype.status: ( ->
+  arguments.shift() if preempt: (arguments[0] == true)
+  [mailbox, success, failure]: arguments
+
   handlers: {
     "imap_mbox_status": ((event, resp) => 
       for box in @boxes
@@ -371,11 +394,14 @@ Imap.prototype.status: ((mailbox, success, failure) ->
     )
   }
 
-  @send("STATUS \""+mailbox+"\" (MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN)", null, failure, handlers)
+  @send(preempt, "STATUS \""+mailbox+"\" (MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN)", null, failure, handlers)
   return this
 )
 
-Imap.prototype.list: ((success, failure) ->
+Imap.prototype.list: ( ->
+  arguments.shift() if preempt: (arguments[0] == true)
+  [success, failure]: arguments
+
   Imap.prototype.list: ((success) ->
     success(@boxes) if (success?)
     return this
@@ -391,11 +417,11 @@ Imap.prototype.list: ((success, failure) ->
 
   _success: ( => 
     for box in @boxes
-      @status(box.name)
+      @status(true, box.name)
     success(@boxes)
   )
 
-  @send('LIST "" %', _success, failure, handlers)
+  @send(preempt, 'LIST "" %', _success, failure, handlers)
   return this
 )
 

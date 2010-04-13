@@ -14,7 +14,7 @@ $(document).bind("imap_state", function(event, imap) {
 });
 
 var Imap = $.require("imap").Imap;
-var imap = new Imap("/mailproxy/");
+var imap = new Imap("/longpoll/");
 window.imap = imap; // debugging
 
 var mbox;
