@@ -1,4 +1,4 @@
-### What
+# Imap-js
 
 Imap-js is a clientside IMAP client. It runs in the browser, communicating
 directly with the IMAP server via a long-polling comet proxy. It's written
