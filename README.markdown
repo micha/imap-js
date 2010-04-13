@@ -20,6 +20,6 @@ etc.).
 
 4. Done.
 
-You should be able to point your browser at http://example.com:4653/imap-js/
+You should be able to point your browser at (http://example.com:4653/imap-js/)
 and log into your IMAP server. (Replace example.com with the real hostname,
 obviously.)  
