@@ -1,7 +1,8 @@
+var config  = $.require("config");
+var Imap    = $.require("imap").Imap;
+
 $.golf.defaultRoute = "/login/";
 $.golf.jssTimeout = 10;
-
-var config = $.require("config");
 
 $(document).bind("imap_state", function(event, imap) {
   if (imap.state == 0) {
@@ -15,7 +16,6 @@ $(document).bind("imap_state", function(event, imap) {
   }
 });
 
-var Imap = $.require("imap").Imap;
 var imap = new Imap("/longpoll/");
 window.imap = imap; // debugging
 
