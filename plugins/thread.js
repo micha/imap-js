@@ -6,6 +6,11 @@ Thread: ( ->
   @qrunner:   null
   @interval:  100
 
+  @clear: ( ->
+    @queue:   { priority: [], preemptible: [] }
+    @running: false
+  )
+
   @add: ((preempt, f) ->
     @queue[(if preempt then "preemptible" else "priority")].push(f)
     return this

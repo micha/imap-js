@@ -17,17 +17,16 @@ _send: ((cmd, success, failure, handlers) ->
       $(document).bind(hlr+"."+id, handlers[hlr])
 
   $(document).bind("imap_tagged_status."+id, (event, resp) =>
-    if (resp.id != id) then return
-
     console.log("send: id="+resp.id+", status="+resp.status)
 
-    if (resp.status == "OK" && success?)
-      success(resp)
-    else if (failure?)
-      failure(resp)
+    if (resp.id == id)
+      @threads.running: false
+      if (resp.status == "OK")
+        success(resp) if (success?)
+      else
+        failure(resp) if (failure?)
 
     $(document).unbind("."+id)
-    @threads.running: false
   )
    
   @longpoll.send(cmd)
@@ -38,6 +37,7 @@ _send: ((cmd, success, failure, handlers) ->
 Imap: ((url) ->
   @url:   url
 
+  @init: true
   # keepalive setInterval handle
   @ping:  null
 
@@ -68,6 +68,7 @@ Imap: ((url) ->
           for box in boxes
             @status(true, box.name)
           @threads.add(true, ( -> setTimeout(unseen, interval) ))
+          @init: false
         )
       )), interval)
   )
@@ -189,6 +190,7 @@ Imap.prototype.select: ( ->
     success(text) if (success?)
   )
 
+  @threads.clear() if (! @init)
   @send(preempt, "SELECT \""+mailbox+"\"", _success, failure, handlers)
   return this
 )
