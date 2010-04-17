@@ -51,18 +51,16 @@
 
   window.mb: $
 
-  @select: ((box) ->
-    imap.select(box, ( ->
-      $(".folders a").removeClass("selected")
-      $(".folders a[href$='#/folder/"+box+"/']").addClass("selected")
-    ))
-  )
-
   @setUnseen: ((box) ->
     $(".folders div.folder").each((i,v) ->
       if ($("a", v).text() == box.name && box.UNSEEN > 0)
         $("span", v).text("["+box.UNSEEN+"]")
     )
+  )
+
+  $(document).bind("imap_select", (event, resp) =>
+    $(".folders a").removeClass("selected")
+    $(".folders a[href$='#/folder/"+resp.name+"/']").addClass("selected")
   )
 
   $(document).bind("imap_mbox_changed", (event, box) =>
@@ -83,7 +81,7 @@
     )
   )
 
-  $("span.login").text(imap.login+"@"+imap.longpoll.host)
+  $("span.login").text(imap.user+"@"+imap.longpoll.host)
 )
 
 </script>

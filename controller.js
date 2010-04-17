@@ -1,10 +1,11 @@
 var config  = $.require("config");
 var Imap    = $.require("imap/client").Imap;
 
+$.golf.imap = {};
 $.golf.defaultRoute = "/login/";
 $.golf.jssTimeout = 10;
 
-$(document).bind("imap_state", function(event, imap) {
+$(document).bind("imap_state", function(event) {
   if (imap.state == 0) {
     $.golf.location("/connect/");
   }
@@ -53,10 +54,14 @@ $.golf.controller = [
         return $.golf.location("/login/");
       }
 
-      mbox = new Component.Mailbox(imap);
+      if (!mbox)
+        mbox = new Component.Mailbox(imap);
 
-      container.empty().append(mbox);
-      mbox.select(params[1]);
+      if (! container.children().size() ||
+          mbox._dom !== container.children().eq(0))
+        container.empty().append(mbox);
+
+      imap.select(params[1]);
     }
   }
 

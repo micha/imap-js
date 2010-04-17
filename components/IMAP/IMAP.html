@@ -6,13 +6,12 @@
 
 ((imap) ->
 
-  success: ((resp) ->
-    console.log("logged in okay")
-  )
-
-  login: new Component.Login()
-  login.addHandler((user, pass) -> 
-    imap.login(user, pass, success, login.denied)
+  state: imap.state
+  login: (new Component.Login()).addHandler((user, pass) ->
+    if (! imap.capabilities.IMAP4rev1)
+      login.error("Server "+imap.longpoll.host+" does not support IMAP4rev1!")
+    else
+      imap.login(user, pass, login.notice, login.error)
   )
 
   $(".content").append(login)

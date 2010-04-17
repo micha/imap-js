@@ -38,6 +38,7 @@ Imap: ((url) ->
   @url:   url
 
   @init: true
+
   # keepalive setInterval handle
   @ping:  null
 
@@ -53,11 +54,22 @@ Imap: ((url) ->
   # 3 => selected
   @state: 0
 
+  # IMAP server capabilities list.
+  @capabilities: {}
+
+  # Status notice/error messages
+  @flash: { type: null, msg: null }
+
+  # Authenticated user name
   @user:    null
+
+  # List of mailboxes with status info
   @boxes:   []
+
+  # Current selected mailbox
   @mailbox: null
   
-  $(document).bind("imap_state", (event, imap) =>
+  $(document).bind("imap_state", (event, reason) =>
     interval: config.status_poll_interval
 
     if (@state == 2 && interval > 0)
@@ -85,10 +97,12 @@ Imap: ((url) ->
       @setState(2)
       console.log(resp.comment)
     else if (@state > 0 && resp.status == "BYE")
+      @flash: { type: "error", msg: resp.comment }
       clearInterval(@ping) if (@ping?)
       @threads.stop()
       clearInterval(@unseen) if (@unseen?)
-      @login: null
+      @user: null
+      @mailbox: null
       @setState(0)
       console.log(resp.comment)
   )
@@ -114,12 +128,16 @@ Imap: ((url) ->
 
 Imap.prototype.connect: ((host, port) ->
   @longpoll.connect(host, port)
+  @capability()
   return this
 )
 
 Imap.prototype.setState: ((state) ->
+  orig: @state
   @state: state
+
   if (state < 3) then @mailbox: null
+  if (state < 2) then @user: null
 
   $(document).trigger("imap_state", [this])
   return this
@@ -156,16 +174,31 @@ Imap.prototype.noop: ( ->
   return this
 )
 
+Imap.prototype.capability: ( ->
+  arguments.shift() if preempt: (arguments[0] == true)
+  [success, failure]: arguments
+
+  handlers: {
+    "imap_capability": ((event, resp) =>
+      @capabilities: resp.capabilities
+    )
+  }
+
+  @send(preempt, "CAPABILITY", success, failure, handlers)
+  return this
+)
+
 Imap.prototype.login: ( ->
   arguments.shift() if preempt: (arguments[0] == true)
   [user, pass, success, failure]: arguments
 
   @send(preempt, "LOGIN \""+user+"\" \""+pass+"\"", ((resp) =>
-    @login: user
+    @user: user
     @setState(2)
-    success(resp.comment)
-  ), ((resp) ->
-    failure(resp.comment)
+    success(resp.comment) if (success?)
+  ), ((resp) =>
+    @setState(1)
+    failure(resp.comment) if (failure?)
   ))
   return this
 )
@@ -180,7 +213,9 @@ Imap.prototype.select: ( ->
         console.log()
     ),
     "imap_exists": ((event, resp) ->
-      console.log(resp.exists+" messages!")
+      resp.name: mailbox
+      console.log(resp.name+": "+resp.exists+" messages!")
+      $(document).trigger("imap_select", [resp])
     )
   }
 

@@ -71,6 +71,18 @@ parse_status_resp: ((resp) ->
   return resp
 )
 
+parse_capability_resp: ((resp) ->
+  pat: /^CAPABILITY ([^\r\n]+)\r\n/i
+  if ( token(resp, pat) == undefined ) then return undefined
+
+  resp.capabilities: {}
+  for i in resp._match[1].split(" ")
+    resp.capabilities[i]: true
+
+  $(document).trigger("imap_capability", [resp])
+  return resp
+)
+
 parse_list_resp: ((resp) ->
   pat: /^LIST \(([^\)]+)*\) "(.)" "([^\r\n]+)"\r\n/i
   if ( token(resp, pat) == undefined ) then return undefined
@@ -108,7 +120,7 @@ parse_unknown_resp: ((resp) ->
   pat: /^([^\r\n]+)\r\n/
   if ( token(resp, pat) == undefined ) then return undefined
 
-  resp.unknown: resp._match[1]
+  resp.unknown: String(resp._match[1].replace(/\n/g, "+"))
 
   $(document).trigger("imap_unknown", [resp])
   return resp
@@ -125,6 +137,7 @@ parse_untagged_resp: ((resp) ->
     parse_exists_resp(resp) ||
     parse_recent_resp(resp) ||
     parse_mbox_status_resp(resp) ||
+    parse_capability_resp(resp) ||
     parse_unknown_resp(resp)
 )
 
@@ -146,7 +159,7 @@ parse_one: ((resp) ->
   return parse_untagged_resp(resp) ||
     parse_continuation_resp(resp) ||
     parse_tagged_resp(resp) ||
-    console.log("OH SHIT: '"+resp.text+"'")
+    console.log("OH SHIT: '"+resp.text.replace(/\n/g, "\\n").replace(/\r/g, "\\r")+"'")
 )
 
 parse: ((resp) ->

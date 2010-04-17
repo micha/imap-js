@@ -2,7 +2,7 @@
 
 # Host and port of IMAP server.
 
-exports.host:                 "localhost"
+exports.host:                 "ubergibson.com"
 exports.port:                 143
 
 # Millisec, 0 or negative to disable.

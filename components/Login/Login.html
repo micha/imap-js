@@ -8,12 +8,12 @@
       form h3 {
         text-align: center;
       }
-    .error, .loading {
+    .error, .notice {
       text-align: left;
       font-family: monospace;
       margin-bottom: .5em;
     }
-    .error p, .loading p {
+    .error p, .notice p {
       line-height: 100%;
       padding: .5em;
       margin: 0;
@@ -23,7 +23,7 @@
       background: #fee;
       border: 1px solid red;
     }
-    .loading {
+    .notice {
       color: gold;
       background: #ffe;
       border: 1px solid gold;
@@ -43,20 +43,27 @@
 
   @addHandler: ((hlr) ->
     handlers.push(hlr)
+    return this
   )
 
-  @denied: ((msg) ->
-    $(".loading").hide()
+  @notice: ((msg) ->
+    $(".error").hide()
+    $(".notice p").text(msg).parent().show()
+    return this
+  )
+
+  @error: ((msg) ->
+    $(".notice").hide()
     $(".error p").text(msg).parent().show()
     $("input[type='password']").select()
     $("input").removeAttr("disabled")
+    return this
   )
 
-  $(".error, .loading").hide()
+  $(".error, .notice").hide()
 
-  $(".login form").submit( ->
-    $(".error").hide()
-    $(".loading").show()
+  $(".login form").submit( =>
+    @notice("Authenticating...")
     $("input").attr("disabled", "disabled")
     user: $("input[name='username']").val()
     pass: $("input[name='password']").val()
@@ -71,8 +78,8 @@
   <div class="login">
     <form>
       <h3><span class="uber">imap</span><span class="mail">js</span></h3>
-      <div class="error"><p>Authentication failed.</p></div>
-      <div class="loading"><p>Authenticating...</p></div>
+      <div class="notice"><p>Notice text</p></div>
+      <div class="error"><p>Error text</p></div>
       Username: <input type="text" name="username"/><br />
       Password: <input type="password" name="password"/><br />
       <input type="submit" value="login"/>
