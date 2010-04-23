@@ -11,23 +11,33 @@
 [\v]                  { return 'VTAB'; }
 [\f]                  { return 'FF'; }
 [{][0-9]+[}][\r][\n] { 
-  var ret = "", num = parseInt(yytext.substring(1,yytext.length-3));
-  for (i=0; i<num; i++)
-    ret += yy.lexer.input();
-  yytext = ret;
-  return 'LITERAL';
+  var i, ret="", num=parseInt(yytext.substring(1,yytext.length-3)),
+      siz=yy.lexer._input.length, putback=yytext.substring(1);
+  if (num <= siz)
+    for (i=0; i<num; i++)
+      ret += yy.lexer.input();
+  else
+    for (i=putback.length-1; i>=0; i--)
+      yy.lexer.unput(putback.charAt(i));
+  yytext = (num <= siz ? ret : "\x7b");
+  return (num <= siz ? 'LITERAL' : "\x7b");
 }
 ["] {
-  var c, d, ret = "";
-  while ((c = yy.lexer.input()) !== '"')
+  var i, c, d, ret = "", tex = yytext;
+  while (yy.lexer._input.length > 0 && (c = yy.lexer.input()) !== '"')
     ret += (c === '\\' && ((d = yy.lexer.input()) === '\\' || d === '"') 
       ? d 
       : ((c === '\\') 
         ? (c+d) 
         : c)
     ); 
+  if (c !== '"')
+    for (i=ret.length-1; i>=0; i--)
+      if (ret.charAt(i) !== '"')
+        yy.lexer.unput(ret.charAt(i))
+  ret = (c !== '"' ? '"' : ret);
   yytext = ret;
-  return 'QUOTED';
+  return (ret.length > 1 ? 'QUOTED' : '"');
 }
 [\x21-\x7e]           { return yytext.toUpperCase(); }
 <<EOF>>               { return 'EOF'; }
@@ -197,16 +207,29 @@ text
   ;
 
 text_char 
-  : QUOTED
-    { $$ = $$.replace(/"/g,"\\\"").replace(/\\/g,"\\\\"); $$ = "\""+$1+"\""; }
-  | LITERAL {
-      var i, num = $1.length;
-      $$ = "\x7b" + num + "\x7d\r\n";
-      for (i=num-1; i>=0; i--)
-        yy.lexer.unput($1.charAt(i));
+  : QUOTED { 
+      var i, str=$1.replace(/"/g,"\\\"").replace(/\\/g,"\\\\") + '"',
+          len=yy.lexer.yytext.length;
+      if (len > 0)
+        for (i=yytext.length-1; i>=0; i--)
+          yy.lexer.unput(yy.lexer.yytext.charAt(i));
+      for (i=str.length-1; i>=0; i--)
+        yy.lexer.unput(str.charAt(i));
+      if (len > 0)
+        yy.lexer.next();
+      $$ = "\"";
     }
-  | error
-    { print("-----------> error <---------------"); }
+  | LITERAL {
+      var i, num=$1.length, len=yy.lexer.yytext.length, putback="\r\n"+$1;
+      if (len > 0)
+        for (i=yytext.length-1; i>=0; i--)
+          yy.lexer.unput(yy.lexer.yytext.charAt(i));
+      for (i=putback.length-1; i>=0; i--)
+        yy.lexer.unput(putback.charAt(i));
+      if (len > 0)
+        yy.lexer.next();
+      $$ = "\x7b" + num + "\x7d";
+    }
   | base64_char
   | punct_other
   | punct_list_wildcards

@@ -15,6 +15,6 @@ parser.yy = {
 
 var cmd = "+ 01WAsP+/dc==\r\n";
 cmd    += "* BYE [BADCHARSET ({4}\r\n";
-cmd    += "poiu asdf \"this is {2}\r\n a test\" zxcv)] Dis{2}\r\n";
+cmd    += "poiu asdf \"this is a quoted string\" zxcv)] Disconnected due to inactivity.\r\n";
 
 parser.parse(cmd);
