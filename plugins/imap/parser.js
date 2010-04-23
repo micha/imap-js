@@ -1,170 +1,135 @@
 #!coffee -p
 
-token: ((s, pat) ->
-  if ( s != undefined && (match: s.text.match(pat)) )
-    s.text: s.text.replace(pat, "")
-    s._match: match
-    return s
+input: ""
+output: {}
+
+$tok: ((pat) ->
+  match: input.match(pat)
+  input: input.replace(pat, "")
+  return match
+)
+
+$clone: ((obj) ->
+  if (obj? && obj.constructor == Array)
+    for i in obj
+      $clone(i)
+  else if (obj? && obj.constructor == Object)
+    ret: {}
+    for i of obj
+      ret[i]: $clone(obj[i])
+    return ret
   else
-    return undefined
+    obj
 )
 
-parse_flags_resp: ((resp) ->
-  pat: /^FLAGS \(([^\)]*)\)\r\n/i
-
-  if ( token(resp, pat) == undefined ) then return undefined
-
-  resp.flags: {}
-
-  for i in resp._match[1].split(" ")
-    resp.flags[i]: true
-
-  $(document).trigger("imap_flags", [resp])
-  return resp
+$process_arg: ((f) ->
+  g: f
+  if (f.constructor == RegExp)
+    f: ( -> $tok(g)?)
+  else if (f.constructor == String)
+    g: new RegExp("^"+f)
+    f: ( -> $tok(g)?)
+  return f
 )
 
-parse_exists_resp: ((resp) ->
-  pat: /^([0-9]+) EXISTS\r\n/
-
-  if ( token(resp, pat) == undefined ) then return undefined
-
-  resp.exists: resp._match[1]
-
-  $(document).trigger("imap_exists", [resp])
-  return resp
+$try: ((f) ->
+  f: $and.apply(this,arguments)
+  _input:  input
+  _output: $clone(output)
+  ret: f()
+  if (!ret)
+    input:  _input
+    output: _output
+  return ret
 )
 
-parse_recent_resp: ((resp) ->
-  pat: /^([0-9]+) RECENT\r\n/
-
-  if ( token(resp, pat) == undefined ) then return undefined
-
-  resp.recent: resp._match[1]
-
-  $(document).trigger("imap_recent", [resp])
-  return resp
+$or: ( -> 
+  _.reduce(arguments, ( -> false), ( (memo,f) -> 
+    f: $process_arg(f)
+    ( -> return memo() || f() )
+  ))
 )
 
-parse_status_resp: ((resp) ->
-  pat: /^(OK|NO|BAD|PREAUTH|BYE)( \[((ALERT|BADCHARSET|CAPABILITY|PARSE|PERMANENTFLAGS|READ-ONLY|READ-WRITE|TRYCREATE|UIDNEXT|UIDVALIDITY|UNSEEN)( ([^\]]+))?)\])?( ([^\r\n]+))?\r\n/i
-
-  if ( token(resp, pat) == undefined ) then return undefined
-
-  resp.status:  resp._match[1]
-  resp.code:    resp._match[4] || ""
-  resp.args:    resp._match[6]
-  resp.comment: resp._match[8]
-
-  args:         resp.args
-
-  if (resp.code.match(/^(BADCHARSET|PERMANENTFLAGS)$/i))
-    resp.args: {}
-    if ( (m: args.match(/^\(([^ ].*)\)$/)) )
-      for i in m[1].split(" ")
-        resp.args[i]: true
-  else if (resp.code == "CAPABILITY")
-    resp.args: {}
-    for i in args.split(" ")
-      resp.args[i]: true
-
-  $(document).trigger("imap_"+resp.type+"_status", [resp])
-  return resp
+$and: ( ->
+  _.reduce(arguments, ( -> true), ( (memo,f) -> 
+    f: $process_arg(f)
+    ( -> return memo() && f() )
+  ))
 )
 
-parse_capability_resp: ((resp) ->
-  pat: /^CAPABILITY ([^\r\n]+)\r\n/i
-  if ( token(resp, pat) == undefined ) then return undefined
-
-  resp.capabilities: {}
-  for i in resp._match[1].split(" ")
-    resp.capabilities[i]: true
-
-  $(document).trigger("imap_capability", [resp])
-  return resp
+$multi: ((f,min,max) ->
+  f: $process_arg(f)
+  return ( ->
+    i: 0
+    i++ while (f())
+    (min: min || 0) <= i <= (max: max || Infinity)
+  )
 )
 
-parse_list_resp: ((resp) ->
-  pat: /^LIST \(([^\)]+)*\) "(.)" "([^\r\n]+)"\r\n/i
-  if ( token(resp, pat) == undefined ) then return undefined
-
-  resp.list: true
-  resp.attr: {}
-  
-  for i in resp._match[1].split(" ")
-    resp.attr[i]: true
-
-  resp.separator: resp._match[2]
-  resp.name: resp._match[3]
-  
-  $(document).trigger("imap_list", [resp])
-  return resp
+$opt: ((f) ->
+  return $multi(f,0,1)
 )
 
-parse_mbox_status_resp: ((resp) ->
-  pat: /^STATUS "([^"]+)" \(([^\)]*)\)\r\n/
-  if ( token(resp, pat) == undefined ) then return undefined
-
-  resp.mailbox: resp._match[1]
-  resp.data:    {}
-
-  data: resp._match[2].split(" ")
-  i: 0
-  while (i++ < data.length)
-    resp.data[data[i-1]]: data[i++]
-
-  $(document).trigger("imap_mbox_status", [resp])
-  return resp
+crlf: ( ->
+  print("> crlf <")
+  return $try("\r\n")
 )
 
-parse_unknown_resp: ((resp) ->
-  pat: /^([^\r\n]+)\r\n/
-  if ( token(resp, pat) == undefined ) then return undefined
-
-  resp.unknown: String(resp._match[1].replace(/\n/g, "+"))
-
-  $(document).trigger("imap_unknown", [resp])
-  return resp
+continue_req: ( ->
+  print("> continue_req <")
+  return false
 )
 
-parse_untagged_resp: ((resp) ->
-  if (token(resp, /^\* /) == undefined) then return undefined
-
-  resp.type: "untagged"
-
-  return parse_status_resp(resp) || 
-    parse_list_resp(resp) ||
-    parse_flags_resp(resp) ||
-    parse_exists_resp(resp) ||
-    parse_recent_resp(resp) ||
-    parse_mbox_status_resp(resp) ||
-    parse_capability_resp(resp) ||
-    parse_unknown_resp(resp)
+response_data: ( ->
+  print("> response_data <")
+  return false
 )
 
-parse_continuation_resp: ((resp) ->
-  if (token(resp, /^\+ /) == undefined) then return undefined
-  resp.type: "continuation"
-  console.log(resp)
-  return resp
+response_tagged: ( ->
+  print("> response_tagged <")
+  return false
 )
 
-parse_tagged_resp: ((resp) ->
-  if (token(resp, /^([A-Z0-9]+) /) == undefined) then return undefined
-  resp.id: resp._match[1]
-  resp.type: "tagged"
-  return parse_status_resp(resp)
+resp_text_code: ( ->
+  print("> resp_text_code <")
+  return $try("ALERT") || 
+    $try("BADCHARSET",$opt(" \\(HI\\)"))
 )
 
-parse_one: ((resp) ->
-  return parse_untagged_resp(resp) ||
-    parse_continuation_resp(resp) ||
-    parse_tagged_resp(resp) ||
-    console.log("OH SHIT: '"+resp.text.replace(/\n/g, "\\n").replace(/\r/g, "\\r")+"'")
+text: ( ->
+  print("> text <")
+  return $try(/^[^\r\n]+/)
 )
 
-parse: ((resp) ->
-  while (resp? && resp.text? && resp.text.length > 0)
-    resp: parse_one( { text: resp.text } )
+resp_text: ( ->
+  print("> resp_text <")
+  return $try($opt($and("\\[",resp_text_code,"\\] ")),text)
 )
 
-exports.parse: parse
+resp_cond_bye: ( ->
+  print("> resp_cond_bye <")
+  return $try("BYE ",resp_text)
+)
+
+response_fatal: ( ->
+  print("> response_fatal <")
+  return $try("[*] ",resp_cond_bye,crlf)
+)
+
+response_done: ( ->
+  print("> response_done <")
+  return $try($or(response_tagged,response_fatal))
+)
+
+response: ( ->
+  print("> response <")
+  return $try($and($multi($or(continue_req,response_data)),response_done))
+)
+
+test: ( ->
+  require("./scripts/underscore-min")
+  input: "* BYE [ALERT] Disconnected.\r\n"
+  print("response: "+response())
+)
+
+test()
