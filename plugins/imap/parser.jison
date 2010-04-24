@@ -50,6 +50,25 @@
 
 imap : response EOF { return $1; } ;
 
+address
+  : '(' nstring SP nstring SP nstring SP nstring ')' {
+      $$ = new Object();
+      $$.name = $2;
+      $$.adl = $4;
+      $$.mailbox = $6;
+      $$.host = $8;
+    }
+  ;
+
+address_list
+  : address
+    { $$ = [ $1 ]; }
+  | address_list address
+    { $$ = $1.concat([ $2 ]); }
+  ;
+
+address_plist : '(' address_list ')' { $$ = $2; } ;
+
 alpha : 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' 
       | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X'
       | 'Y' | 'Z' ;
@@ -110,6 +129,32 @@ base64_terminal
     { $$ = "" + $1 + $2 + $3 + $4; }
   ;
 
+body
+  : '(' body_type_1part ')'
+    { $$ = $2; }
+  | '(' body_type_mpart ')'
+    { $$ = $2; }
+  ;
+
+body_extension
+  : nstring
+  | digits
+  | '(' body_extensions ')'
+    { $$ = $2; }
+  ;
+
+body_extensions
+  : body_extension
+    { $$ = [ $1 ]; }
+  | body_extensions SP body_extension {
+      if ($3.constructor === Array)
+        $1.push($3);
+      else
+        $1.concat([ $3 ]);
+      $$ = $1;
+    }
+  ;
+
 capability_list
   : atom
     { $$ = [ $1 ]; }
@@ -137,6 +182,58 @@ crlf
   : CR LF
   ;
 
+date : date_text | QUOTED ;
+
+date_day
+  : digit
+  | digit digit
+    { $$ = "" + $1 + $2; }
+  ;
+
+date_day_fixed
+  : SP digit
+    { $$ = "" + $1 + $2; }
+  | digit digit
+    { $$ = "" + $1 + $2; }
+  ;
+
+date-month
+  : J A N
+    { $$ = "Jan"; }
+  | F E B
+    { $$ = "Feb"; }
+  | M A R
+    { $$ = "Mar"; }
+  | A P R
+    { $$ = "Apr"; }
+  | M A Y
+    { $$ = "May"; }
+  | J U N
+    { $$ = "Jun"; }
+  | J U L
+    { $$ = "Jul"; }
+  | A U G
+    { $$ = "Aug"; }
+  | S E P
+    { $$ = "Sep"; }
+  | O C T
+    { $$ = "Oct"; }
+  | N O V
+    { $$ = "Nov"; }
+  | D E C
+    { $$ = "Dec"; }
+  ;
+
+date_text
+  : date_day '-' date_month '-' date_year
+    { $$ = "" + $1 + $2 + $3 + $4 + $5; }
+  ;
+
+date_year 
+  : digit digit digit digit 
+    { $$ = "" + $1 + $2 + $3 + $4; }
+  ;
+
 digit : digit_nz | digit_z ;
 
 digits
@@ -148,6 +245,24 @@ digits
 digit_nz : '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' ;
 
 digit_z : '0' ;
+
+envelope
+  : '(' nstring SP nstring SP naddress_plist SP naddress_plist SP 
+        naddress_plist SP naddress_plist SP naddress_plist SP 
+        naddress_plist SP nstring SP nstring ')' {
+      $$              = new Object();
+      $$.date         = $2;
+      $$.subject      = $4;
+      $$.from         = $6;
+      $$.sender       = $8;
+      $$.reply_to     = $10;
+      $$.to           = $12;
+      $$.cc           = $14;
+      $$.bcc          = $16;
+      $$.in_reply_to  = $18;
+      $$.message_id   = $20;
+    }
+  ;
 
 flag
   : BSLASH A N S W E R E D
@@ -218,14 +333,10 @@ mailbox_data
   ;
 
 mailbox_list
-  : '(' ')' SP SP mailbox
-    { $$ = new Object(); $$.mailbox = $5; }
-  | '(' ')' SP QUOTED SP mailbox
-    { $$ = new Object(); $$.mailbox = $6; $$.separator = $4; }
-  | '(' mbx_list_flags ')' SP SP mailbox
-    { $$ = new Object(); $$.mailbox = $6; $$.flags = $2; }
-  | '(' mbx_list_flags ')' SP QUOTED SP mailbox
-    { $$ = new Object(); $$.mailbox = $7; $$.separator = $5; $$.flags = $2; }
+  : '(' ')' SP nquoted SP mailbox
+    { $$ = new Object(); $$.separator = $4; $$.mailbox = $6; }
+  | '(' mbx_list_flags ')' SP nquoted SP mailbox
+    { $$ = new Object(); $$.flags = $2; $$.separator = $5; $$.mailbox = $7; }
   ;
 
 mbx_list_flags
@@ -257,6 +368,62 @@ message_data
       $$.FETCH.att = $9;
     }
   ;
+
+msg_att
+  : '(' msg_att_list ')'
+    { $$ = $2 }
+  ;
+
+msg_att_list
+  : msg_att_dynamic
+    { $$ = [ $1 ]; }
+  | msg_att_static
+    { $$ = [ $1 ]; }
+  | msg_att_list SP msg_att_dynamic
+    { $$ = $1.concat([ $3 ]); }
+  | msg_att_list SP msg_att_static
+    { $$ = $1.concat([ $3 ]); }
+  ;
+
+msg_att_dynamic
+  : F L A G S SP '(' ')'
+    { $$ = new Object(); $$.FLAGS = []; }
+  | F L A G S SP '(' flag_list ')'
+    { $$ = new Object(); $$.FLAGS = $8; }
+  ;
+
+msg_att_static
+  : E N V E L O P E SP envelope
+    { $$ = new Object(); $$.ENVELOPE = $10; }
+  | I N T E R N A L D A T E SP QUOTED
+    { $$ = new Object(); $$.INTERNALDATE = $14; }
+  | R F C 8 2 2 SP nstring
+    { $$ = new Object(); $$.RFC822 = $8; }
+  | R F C 8 2 2 '.' H E A D E R SP nstring
+    { $$ = new Object(); $$["RFC822.HEADER"] = $15; }
+  | R F C 8 2 2 '.' T E X T SP nstring
+    { $$ = new Object(); $$["RFC822.TEXT"] = $13; }
+  | R F C 8 2 2 '.' S I Z E SP digits 
+    { $$ = new Object(); $$["RFC822.SIZE"] = parseInt($13); }
+  | B O D Y SP body
+    { $$ = new Object(); $$.BODY = $6; }
+  | B O D Y S T R U C T U R E SP body
+    { $$ = new Object(); $$.BODYSTRUCTURE = $15; }
+  | B O D Y section SP nstring
+    { $$ = new Object(); $$["BODY"+$5] = $7; }
+  | B O D Y section '<' digits '>' SP nstring
+    { $$ = new Object(); $$["BODY"+$5+"<"+$7+">"] = $10; }
+  | U I D SP number_nz
+    { $$ = new Object(); $$UID = parseInt($5); }
+  ;
+
+naddress_plist : address_plist | nil ;
+
+nil : N I L { $$ = undefined; } ;
+
+nquoted : QUOTED | nil ;
+
+nstring : string | nil ;
 
 number_nz
   : digit_nz digits
