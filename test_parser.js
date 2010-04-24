@@ -13,8 +13,16 @@ parser.yy = {
   } 
 };
 
-var cmd = "+ 01WAsP+/dc==\r\n";
-cmd    += "* BYE [BADCHARSET ({4}\r\n";
-cmd    += "poiu asdf \"this is a quoted string\" zxcv)] Disconnected due to inactivity.\r\n";
+var cmd = "+ Ready for literal data\r\n";
+cmd    += "* CAPABILITY IMAP4rev1\r\n";
+cmd    += "* FLAGS \\Seen \\Answered\r\n";
+cmd    += "* SEARCH\r\n";
+cmd    += "* SEARCH 40962\r\n";
+cmd    += "* OK [PARSE] Mission complete.\r\n";
+cmd    += "100-FOO/ OK [ALERT] Mission complete.\r\n";
 
+print("INPUT:")
+print(cmd);
+print("")
+print("OUTPUT:")
 parser.parse(cmd);
