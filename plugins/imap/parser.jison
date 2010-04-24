@@ -155,6 +155,50 @@ body_extensions
     }
   ;
 
+body_ext_1part
+  : nstring
+    { $$ = new Object(); $$.md5 = $1; }
+  | nstring SP body_fld_dsp
+    { $$ = new Object(); $$.md5 = $1; $$.dsp = $3; }
+  | nstring SP body_fld_dsp SP body_fld_lang
+    { $$ = new Object(); $$.md5 = $1; $$.dsp = $3; $$.lang = $5; }
+  | nstring SP body_fld_dsp SP body_fld_lang SP nstring
+    { $$ = new Object(); $$.md5 = $1; $$.dsp = $3; $$.lang = $5; $$.loc = $7; }
+  | nstring SP body_fld_dsp SP body_fld_lang SP nstring SP body_extensions {
+      $$ = new Object();
+      $$.md5 = $1;
+      $$.dsp = $3;
+      $$.lang = $5;
+      $$.loc = $7;
+      $$.ext = $9;
+    }
+  ;
+
+body_ext_mpart
+  : body_fld_param
+    { $$ = new Object(); $$.param = $1; }
+  | body_fld_param SP body_fld_dsp
+    { $$ = new Object(); $$.param = $1; $$.dsp = $3; }
+  | body_fld_param SP body_fld_dsp SP body_fld_lang
+    { $$ = new Object(); $$.param = $1; $$.dsp = $3; $$.lang = $5; }
+  | body_fld_param SP body_fld_dsp SP body_fld_lang SP body_fld_loc {
+      $$ = new Object();
+      $$.param = $1;
+      $$.dsp = $3;
+      $$.lang = $5;
+      $$.loc = $7;
+    }
+  | body_fld_param SP body_fld_dsp SP body_fld_lang SP nstring SP
+    body_extensions {
+      $$ = new Object();
+      $$.param = $1;
+      $$.dsp = $3;
+      $$.lang = $5;
+      $$.loc = $7;
+      $$.ext = $9;
+    }
+  ;
+
 capability_list
   : atom
     { $$ = [ $1 ]; }
