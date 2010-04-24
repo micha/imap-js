@@ -37,7 +37,7 @@
         yy.lexer.unput(ret.charAt(i))
   ret = (c !== '"' ? '"' : ret);
   yytext = ret;
-  return (ret.length > 1 ? 'QUOTED' : '"');
+  return (c !== '"' ? '"' : 'QUOTED');
 }
 "\\"                  { return 'BSLASH'; }
 "+"                   { return 'PLUS'; }
@@ -169,10 +169,16 @@ flag
     { $$ = $1 + "Seen"; }
   | BSLASH D R A F T
     { $$ = $1 + "Draft"; }
-  | BSLASH atom
-    { $$ = "" + $1 + $2; }
-  | atom
+  | flag_keyword
+  | flag_extension
   ;
+
+flag_extension
+  : BSLASH atom
+    { $$ = "" + $1 + $2; }
+  ;
+
+flag_keyword : atom ;
 
 flag_perm
   : BSLASH '*'
@@ -194,21 +200,56 @@ flag_perm_list
     { $$ = $1.concat($3); }
   ;
 
+mailbox
+  : astring
+    { $$ = ($1.toUpperCase() === "INBOX" ? "INBOX" : $1); }
+  ;
+
 mailbox_data
   : F L A G S SP flag_list
     { yy.out.type = "FLAGS"; yy.out.args = $7; }
   | L I S T SP mailbox_list
-    { yy.out.type = "LIST"; yy.out.args = $6; }
+    { yy.out.type = "LIST"; }
   | L S U B SP mailbox_list
-    { yy.out.type = "LSUB"; yy.out.args = $6; }
+    { yy.out.type = "LSUB"; }
   | S E A R C H
     { yy.out.type = "SEARCH"; }
   | S E A R C H SP number_nz
     { yy.out.type = "SEARCH"; yy.out.args = [ parseInt($8) ]; }
   | S T A T U S SP mailbox SP '(' ')'
-    { yy.ouy.type = "STATUS"; }
+    { yy.out.type = "STATUS"; }
   | S T A T U S SP mailbox SP '(' status_att_list ')'
-    { yy.ouy.type = "STATUS"; yy.out.mailbox = $8; yy.out.args = $11; }
+    { yy.out.type = "STATUS"; yy.out.mailbox = $8; yy.out.args = $11; }
+  ;
+
+mailbox_list
+  : '(' ')' SP SP mailbox
+    { yy.out.mailbox = $5; }
+  | '(' ')' SP QUOTED SP mailbox
+    { yy.out.separator = $4; yy.out.mailbox = $6; }
+  | '(' mbx_list_flags ')' SP SP mailbox
+    { yy.out.args = $2; yy.out.mailbox = $6; }
+  | '(' mbx_list_flags ')' SP QUOTED SP mailbox
+    { yy.out.args = $2; yy.out.separator = $5; yy.out.mailbox = $7; }
+  ;
+
+mbx_list_flags
+  : mbx_list_flag
+    { $$ = [ $1 ]; }
+  | mbx_list_flags SP mbx_list_flag
+    { $$ = $1.concat($3); }
+  ;
+
+mbx_list_flag
+  : BSLASH N O S E L E C T
+    { $$ = $1 + "Noselect"; }
+  | BSLASH M A R K E D
+    { $$ = $1 + "Marked"; }
+  | BSLASH U N M A R K E D
+    { $$ = $1 + "Unmarked"; }
+  | BSLASH N O I N F E R I O R S 
+    { $$ = $1 + "Noinferiors"; }
+  | flag_extension
   ;
 
 message_data
@@ -324,6 +365,26 @@ resp_text_code
     { yy.out.code = "UNSEEN"; yy.out.args = [parseInt($8)]; }
   | atom SP text_nobr
     { yy.out.code = $1; yy.out.args = [$3]; }
+  ;
+
+status_att
+  : M E S S A G E S
+    { $$ = "MESSAGES"; }
+  | R E C E N T
+    { $$ = "RECENT"; }
+  | U I D N E X T
+    { $$ = "UIDNEXT"; }
+  | U I D V A L I D I T Y
+    { $$ = "UIDVALIDITY"; }
+  | U N S E E N
+    { $$ = "UNSEEN"; }
+  ;
+
+status_att_list
+  : status_att SP digits
+    { var i = new Object(); i[$1] = parseInt($3); $$ = i; }
+  | status_att_list SP status_att SP digits
+    { $1[$3] = parseInt($5); $$ = $1; }
   ;
 
 string : QUOTED | LITERAL ;
