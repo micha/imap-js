@@ -48,9 +48,7 @@
 
 %%
 
-imap
-  : response EOF
-  ;
+imap : response EOF { return $1; } ;
 
 alpha : 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' 
       | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X'
@@ -75,7 +73,7 @@ astring_list
   : astring
     { $$ = [ $1 ]; }
   | astring_list SP astring
-    { $$ = $1.concat($3); }
+    { $$ = $1.concat([ $3 ]); }
   ;
 
 atom
@@ -116,23 +114,23 @@ capability_list
   : atom
     { $$ = [ $1 ]; }
   | capability_list SP atom
-    { $$ = $1.concat($3); }
+    { $$ = $1.concat([ $3 ]); }
   ;
 
 capability_data
   : C A P A B I L I T Y
-    { yy.out.type = "CAPABILITY"; }
+    { $$ = new Object(); $$.CAPABILITY = []; }
   | C A P A B I L I T Y SP capability_list
-    { yy.out.type = "CAPABILITY"; yy.out.args = $12; }
+    { $$ = new Object(); $$.CAPABILITY = $12; }
   ;
 
 char_other : SP | TAB | VTAB | FF ;
 
 continue_req
   : PLUS SP resp_text crlf
-    { yy.out.type = "CONTINUE"; }
+    { $$ = new Object(); $$.text = $3; }
   | PLUS crlf
-    { yy.out.type = "CONTINUE"; }
+    { $$ = true; }
   ;
 
 crlf
@@ -150,13 +148,6 @@ digits
 digit_nz : '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' ;
 
 digit_z : '0' ;
-
-digits
-  : digit
-    { $$ = parseInt($1); }
-  | digits digit
-    { $$ = 10 * $1 + parseInt($2); }
-  ;
 
 flag
   : BSLASH A N S W E R E D
@@ -190,14 +181,14 @@ flag_list
   : flag
     { $$ = [ $1 ]; }
   | flag_list SP flag
-    { $$ = $1.concat($3); }
+    { $$ = $1.concat([ $3 ]); }
   ;
 
 flag_perm_list
   : flag_perm
     { $$ = [ $1 ]; }
   | flag_perm_list SP flag_perm
-    { $$ = $1.concat($3); }
+    { $$ = $1.concat([ $3 ]); }
   ;
 
 mailbox
@@ -207,37 +198,41 @@ mailbox
 
 mailbox_data
   : F L A G S SP flag_list
-    { yy.out.type = "FLAGS"; yy.out.args = $7; }
+    { $$ = new Object(); $$.FLAGS = $7; }
   | L I S T SP mailbox_list
-    { yy.out.type = "LIST"; }
+    { $$ = new Object(); $$.LIST = $6; }
   | L S U B SP mailbox_list
-    { yy.out.type = "LSUB"; }
+    { $$ = new Object(); $$.LSUB = $6; }
   | S E A R C H
-    { yy.out.type = "SEARCH"; }
+    { $$ = new Object(); $$.SEARCH = true; }
   | S E A R C H SP number_nz
-    { yy.out.type = "SEARCH"; yy.out.args = [ parseInt($8) ]; }
+    { $$ = new Object(); $$.SEARCH = parseInt($8); }
   | S T A T U S SP mailbox SP '(' ')'
-    { yy.out.type = "STATUS"; }
+    { $$ = new Object(); $$.STATUS = new Object(); $$.STATUS.mailbox = $8; }
   | S T A T U S SP mailbox SP '(' status_att_list ')'
-    { yy.out.type = "STATUS"; yy.out.mailbox = $8; yy.out.args = $11; }
+    { $$ = new Object(); $$.STATUS = $11; $$.STATUS.mailbox = $8; }
+  | digits SP E X I S T S
+    { $$ = new Object(); $$.EXISTS = parseInt($1); }
+  | digits SP R E C E N T
+    { $$ = new Object(); $$.RECENT = parseInt($1); }
   ;
 
 mailbox_list
   : '(' ')' SP SP mailbox
-    { yy.out.mailbox = $5; }
+    { $$ = new Object(); $$.mailbox = $5; }
   | '(' ')' SP QUOTED SP mailbox
-    { yy.out.separator = $4; yy.out.mailbox = $6; }
+    { $$ = new Object(); $$.mailbox = $6; $$.separator = $4; }
   | '(' mbx_list_flags ')' SP SP mailbox
-    { yy.out.args = $2; yy.out.mailbox = $6; }
+    { $$ = new Object(); $$.mailbox = $6; $$.flags = $2; }
   | '(' mbx_list_flags ')' SP QUOTED SP mailbox
-    { yy.out.args = $2; yy.out.separator = $5; yy.out.mailbox = $7; }
+    { $$ = new Object(); $$.mailbox = $7; $$.separator = $5; $$.flags = $2; }
   ;
 
 mbx_list_flags
   : mbx_list_flag
     { $$ = [ $1 ]; }
   | mbx_list_flags SP mbx_list_flag
-    { $$ = $1.concat($3); }
+    { $$ = $1.concat([ $3 ]); }
   ;
 
 mbx_list_flag
@@ -253,7 +248,14 @@ mbx_list_flag
   ;
 
 message_data
-  :
+  : digits SP E X P U N G E
+    { $$ = new Object(); $$.EXPUNGE = parseInt($1); }
+  | digits SP F E T C H SP msg_att {
+      $$ = new Object();
+      $$.FETCH = new Object();
+      $$.FETCH.uid = parseInt($1);
+      $$.FETCH.att = $9;
+    }
   ;
 
 number_nz
@@ -277,94 +279,102 @@ punct_quoted_specials : '"' | '\\' ;
 
 response
   : response_done
+    { $$ = [ $1 ]; }
   | response_nonterms response_done
+    { $$ = $1.concat([ $2 ]); }
   ;
 
 response_data
   : '*' SP resp_cond_state crlf
+    { $$ = $3; }
   | '*' SP mailbox_data crlf
+    { $$ = $3; }
   | '*' SP message_data crlf
+    { $$ = $3; }
   | '*' SP capability_data crlf
+    { $$ = $3; }
   ;
 
 response_done
   : response_tagged
-    { yy.trigger(); }
+    { $$ = new Object(); $$.TAGGED = $1; }
   | response_fatal
-    { yy.trigger(); }
+    { $$ = new Object(); $$.FATAL = $1; }
   ;
 
 response_fatal
   : '*' SP resp_cond_bye crlf
+    { $$ = $3; }
   ;
 
 response_nonterm
   : continue_req
-    { yy.trigger(); }
+    { $$ = new Object(); $$.CONTINUE = $1; }
   | response_data 
-    { yy.trigger(); }
+    { $$ = new Object(); $$.DATA = $1; }
   ;
 
 response_nonterms
   : response_nonterm
+    { $$ = [ $1 ]; }
   | response_nonterms response_nonterm  
+  { $$ = $1.concat([ $2 ]); }
   ;
 
 response_tagged
   : tag SP resp_cond_state crlf
-    { yy.out.tag = $1; }
+    { $$ = $3; $$.tag = $1; }
   ;
 
 resp_cond_bye
   : B Y E SP resp_text
-    { yy.out.type = "BYE"; }
+    { $$ = new Object(); $$.text = $5; }
   ;
 
 resp_cond_state
   : O K SP resp_text
-    { yy.out.type = "OK"; }
+    { $$ = new Object(); $$.status = "OK"; $$.text = $4; }
   | N O SP resp_text
-    { yy.out.type = "NO"; }
+    { $$ = new Object(); $$.status = "NO"; $$.text = $4; }
   | B A D SP resp_text
-    { yy.out.type = "BAD"; }
+    { $$ = new Object(); $$.status = "BAD"; $$.text = $4; }
   ;
 
 resp_text
   : '[' resp_text_code ']' SP text
-    { yy.out.text = $5; }
+    { $$ = new Object(); $$.code = $2; $$.text = $5; }
   | text
-    { yy.out.text = $1; }
+    { $$ = new Object(); $$.text = $1; }
   ;
 
 resp_text_code
   : A L E R T
-    { yy.out.code = "ALERT"; }
+    { $$ = new Object(); $$.ALERT = []; }
   | B A D C H A R S E T
-    { yy.out.code = "BADCHARSET"; }
+    { $$ = new Object(); $$.BADCHARSET = []; }
   | B A D C H A R S E T SP '(' astring_list ')'
-    { yy.out.code = "BADCHARSET"; yy.out.args = $13; }
+    { $$ = new Object(); $$.BADCHARSET = $13; }
   | capability_data
-    { yy.out.code = "CAPABILITY"; }
   | P A R S E
-    { yy.out.code = "PARSE"; }
+    { $$ = new Object(); $$.PARSE = []; }
   | P E R M A N E N T F L A G S SP '(' ')'
-    { yy.out.code = "PERMANENTFLAGS"; }
+    { $$ = new Object(); $$.PERMANENTFLAGS = []; }
   | P E R M A N E N T F L A G S SP '(' flag_perm_list ')'
-    { yy.out.code = "PERMANENTFLAGS"; yy.out.args = $17; }
+    { $$ = new Object(); $$.PERMANENTFLAGS = $17; }
   | R E A D '-' O N L Y
-    { yy.out.code = "READ-ONLY"; }
+    { $$ = new Object(); $$.READ_ONLY = []; }
   | R E A D '-' W R I T E
-    { yy.out.code = "READ-WRITE"; }
+    { $$ = new Object(); $$.READ_WRITE = []; }
   | T R Y C R E A T E
-    { yy.out.code = "TRYCREATE"; }
+    { $$ = new Object(); $$.TRYCREATE = []; }
   | U I D N E X T SP number_nz
-    { yy.out.code = "UIDNEXT"; yy.out.args = [parseInt($9)]; }
+    { $$ = new Object(); $$.UIDNEXT = parseInt($9); }
   | U I D V A L I D I T Y SP number_nz
-    { yy.out.code = "UIDVALIDITY"; yy.out.args = [parseInt($13)]; }
+    { $$ = new Object(); $$.UIDVALIDITY = parseInt($13); }
   | U N S E E N SP number_nz
-    { yy.out.code = "UNSEEN"; yy.out.args = [parseInt($8)]; }
+    { $$ = new Object(); $$.UNSEEN = parseInt($8); }
   | atom SP text_nobr
-    { yy.out.code = $1; yy.out.args = [$3]; }
+    { $$ = new Object(); $$[$1] = $3; }
   ;
 
 status_att
