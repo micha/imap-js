@@ -136,6 +136,13 @@ body
     { $$ = $2; }
   ;
 
+body_list
+  : body
+    { $$ = [ $1 ]; }
+  | body_list body
+    { $$ = $1.concat([ $2 ]); }
+  ;
+
 body_extension
   : nstring
   | digits
@@ -196,6 +203,82 @@ body_ext_mpart
       $$.lang = $5;
       $$.loc = $7;
       $$.ext = $9;
+    }
+  ;
+
+body_fields
+  : body_fld_param SP nstring SP nstring SP string SP digits {
+      $$ = new Object();
+      $$.param = $1;
+      $$.id = $3;
+      $$.desc = $5;
+      $$.enc = $7;
+      $$.octets = $9;
+    }
+  ;
+
+body_fld_dsp
+  : '(' string SP body_fld_param ')'
+    { $$ = new Object(); $$.name = $2; $$.param = $4; }
+  | nil
+  ;
+
+body_fld_lang
+  : nstring
+  | '(' string_list ')'
+    { $$ = $2; }
+  ;
+
+body_fld_param
+  : '(' string_list_even ')'
+    { $$ = $2; }
+  | nil
+  ;
+
+body_type_1part
+  : body_type_basic
+    { $$ = new Object(); $$.type = $1; }
+  | body_type_basic SP body_ext_1part
+    { $$ = new Object(); $$.type = $1; $$.ext = $3; }
+  | body_type_msg
+    { $$ = new Object(); $$.type = $1; }
+  | body_type_msg SP body_ext_1part
+    { $$ = new Object(); $$.type = $1; $$.ext = $3; }
+  | body_type_text
+    { $$ = new Object(); $$.type = $1; }
+  | body_type_text SP body_ext_1part
+    { $$ = new Object(); $$.type = $1; $$.ext = $3; }
+  ;
+
+body_type_basic
+  : media_all SP body_fields
+    { $$ = new Object(); $$.media = $1; $$.fields = $3; }
+  ;
+
+body_type_mpart
+  : body_list SP string
+    { $$ = new Object(); $$.bodies = $1; $$.subtype = $3; }
+  | body_list SP string SP body_ext_mpart
+    { $$ = new Object(); $$.bodies = $1; $$.subtype = $3; $$.ext = $5; }
+  ;
+
+body_type_msg
+  : media_all SP body_fields SP envelope SP body SP digits {
+      $$ = new Object();
+      $$.media = $1;
+      $$.fields = $3;
+      $$.envelope = $5;
+      $$.body = $7;
+      $$.lines = $9;
+    }
+  ;
+
+body_type_text
+  : media_all SP body_fields SP digits {
+      $$ = new Object();
+      $$.media = $1;
+      $$.fields = $3;
+      $$.lines = $5;
     }
   ;
 
@@ -350,14 +433,19 @@ flag_perm_list
     { $$ = $1.concat([ $3 ]); }
   ;
 
+header_list
+  : '(' astring_list ')'
+    { $$ = $2.join(" "); }
+  ;
+
 mailbox
   : astring
     { $$ = ($1.toUpperCase() === "INBOX" ? "INBOX" : $1); }
   ;
 
 mailbox_data
-  : F L A G S SP flag_list
-    { $$ = new Object(); $$.FLAGS = $7; }
+  : F L A G S SP '(' flag_list ')'
+    { $$ = new Object(); $$.FLAGS = $8; }
   | L I S T SP mailbox_list
     { $$ = new Object(); $$.LIST = $6; }
   | L S U B SP mailbox_list
@@ -402,13 +490,18 @@ mbx_list_flag
   | flag_extension
   ;
 
+media_all
+  : string SP string
+    { $$ = [ $1, $3 ]; }
+  ;
+
 message_data
   : digits SP E X P U N G E
     { $$ = new Object(); $$.EXPUNGE = parseInt($1); }
   | digits SP F E T C H SP msg_att {
       $$ = new Object();
       $$.FETCH = new Object();
-      $$.FETCH.uid = parseInt($1);
+      $$.FETCH.seq = parseInt($1);
       $$.FETCH.att = $9;
     }
   ;
@@ -588,6 +681,43 @@ resp_text_code
     { $$ = new Object(); $$[$1] = $3; }
   ;
 
+section
+  : '[' ']'
+    { $$ = "" + $1 + $2; }
+  | '[' section_spec ']'
+    { $$ = "" + $1 + $2 + $3; }
+  ;
+
+section_msgtext
+  : H E A D E R
+    { $$ = "HEADER"; }
+  | H E A D E R '.' F I E L D S SP header_list
+    { $$ = "HEADER.FIELDS " + $15; }
+  | H E A D E R '.' F I E L D S '.' N O T SP header_list
+    { $$ = "HEADER.FIELDS.NOT " + $19; }
+  | T E X T
+    { $$ = "TEXT"; }
+  ;
+
+section_part
+  : number_nz
+  | section_part '.' number_nz
+    { $$ = "" + $1 + $2 + $3; }
+  ;
+
+section_spec
+  : section_msgtext
+  | section_part
+  | section_part '.' section_text
+    { $$ = $1 + $2 + $3; }
+  ;
+
+section_text
+  : M I M E
+    { $$ = "MIME"; }
+  | section_msgtext
+  ;
+
 status_att
   : M E S S A G E S
     { $$ = "MESSAGES"; }
@@ -609,6 +739,20 @@ status_att_list
   ;
 
 string : QUOTED | LITERAL ;
+
+string_list
+  : string
+    { $$ = [ $1 ]; }
+  | string_list SP string
+    { $$ = $1.concat([ $3 ]); }
+  ;
+
+string_list_even
+  : string SP string
+    { $$ = [ $1, $3 ]; }
+  | string_list SP string SP string
+    { $$ = $1.concat([ $3, $5 ]); }
+  ;
 
 tag : tag_chars ;
 
