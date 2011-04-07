@@ -21,7 +21,7 @@ is something I'd need to take care of anyway, with or without webmail.
 It can log in, list all folders, and get info (like how many unread messages,
 etc.).
 
-![Screenshot - progress so far...](https://github.com/micha/imap-js/blob/master/screenshot.png "Screenshot - progress so far...")
+![Screenshot - progress so far...](https://github.com/micha/imap-js/raw/master/screenshot.png "Screenshot - progress so far...")
 
 ### Install
 
